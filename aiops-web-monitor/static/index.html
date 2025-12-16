@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIOps Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%236366f1'/><text x='50' y='68' font-size='45' font-weight='bold' font-family='Arial' text-anchor='middle' fill='white'>MO</text></svg>">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+      color: #e4e4e7;
+      min-height: 100vh;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      -webkit-text-fill-color: white;
+    }
+    .btn-settings { background: rgba(255,255,255,0.1); color: #e4e4e7; padding: 8px 16px; }
+    .pulse.error { background: #ef4444; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal { background: #1a1a2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; width: 90%; max-width: 600px; }
+    .modal h2 { margin-bottom: 20px; font-size: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: #a1a1aa; margin-bottom: 8px; }
+    .form-group input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #e4e4e7; font-size: 14px; font-family: monospace; }
+    .form-group input:focus { outline: none; border-color: #6366f1; }
+    .form-group small { display: block; margin-top: 6px; font-size: 12px; color: #71717a; }
+    .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+    .btn-cancel { background: rgba(255,255,255,0.1); color: #e4e4e7; }
+    .config-warning { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: center; }
+    .config-warning h3 { color: #fbbf24; margin-bottom: 8px; }
+    .config-warning p { color: #a1a1aa; margin-bottom: 16px; }
+    .status-bar {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .pulse {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .tab {
+      padding: 12px 24px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab:hover { background: rgba(255,255,255,0.1); }
+    .tab.active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-color: transparent;
+      color: white;
+    }
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .alarm-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .alarm-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .alarm-icon {
+      width: 36px;
+      height: 36px;
+      background: rgba(239, 68, 68, 0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .alarm-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f4f4f5;
+    }
+    .alarm-namespace {
+      font-size: 13px;
+      color: #71717a;
+      margin-top: 2px;
+    }
+    .alarm-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      padding: 16px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .meta-item label {
+      font-size: 11px;
+      color: #71717a;
+      text-transform: uppercase;
+    }
+    .meta-item span {
+      display: block;
+      font-size: 14px;
+      color: #e4e4e7;
+      margin-top: 4px;
+      font-family: monospace;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-hidden {
+      display: none;
+    }
+    .inv-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .inv-status.completed { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .inv-status.in_progress { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .inv-status.pending { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+    .inv-status.planning { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+    .inv-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 20px 0;
+    }
+    .metric-card {
+      background: rgba(0,0,0,0.3);
+      padding: 16px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .metric-label {
+      font-size: 12px;
+      color: #71717a;
+      margin-top: 4px;
+    }
+    .hypothesis {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin: 16px 0;
+    }
+    .hypothesis-label {
+      font-size: 12px;
+      color: #8b5cf6;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .task-list { margin-top: 16px; }
+    .task-item {
+      background: rgba(0,0,0,0.2);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      border-left: 3px solid #3f3f46;
+      overflow: hidden;
+    }
+    .task-item.completed { border-left-color: #22c55e; }
+    .task-item.in_progress { border-left-color: #fbbf24; }
+    .task-item.pending { border-left-color: #6b7280; }
+    .task-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px;
+      cursor: pointer;
+    }
+    .task-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .task-icon.completed { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .finding-label { font-size: 11px; color: #8b5cf6; text-transform: uppercase; margin-bottom: 6px; font-weight: 600; }
+    .finding-list li::before { content: '•'; position: absolute; left: 0; color: #6366f1; }
+    .task-icon.pending { background: rgba(107, 114, 128, 0.2); color: #6b7280; }
+    .task-icon.in_progress { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .task-content { flex: 1; }
+    .task-agent {
+      font-weight: 600;
+      font-size: 14px;
+      color: #f4f4f5;
+    }
+    .task-desc {
+      font-size: 13px;
+      color: #a1a1aa;
+      margin-top: 4px;
+    }
+    .task-findings {
+      background: rgba(0,0,0,0.3);
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 16px;
+    }
+    .finding-section { margin-bottom: 12px; }
+
+    .finding-content {
+      font-size: 13px;
+      color: #d4d4d8;
+      line-height: 1.6;
+    }
+    .finding-list {
+      list-style: none;
+      padding: 0;
+    }
+    .finding-list li {
+      padding: 6px 0 6px 16px;
+      position: relative;
+      font-size: 13px;
+      color: #a1a1aa;
+    }
+
+    .root-cause {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(16, 185, 129, 0.1));
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    .root-cause-label {
+      font-size: 12px;
+      color: #22c55e;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #71717a;
+    }
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 40px;
+      color: #71717a;
+    }
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      padding: 12px 0;
+    }
+    .section-header h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #a1a1aa;
+    }
+    .task-expand {
+      font-size: 10px;
+      color: #6366f1;
+      transition: transform 0.2s;
+    }
+    .task-expand.open { transform: rotate(180deg); }
+    .planning-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .planning-indicator .spinner {
+      border-top-color: #3b82f6;
+    }
+    .confidence-bar {
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .confidence-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      transition: width 0.5s ease;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <header class="header">
+        <div class="logo">
+          <div class="logo-icon">🔍</div>
+          AIOps Monitor
+        </div>
+        <div class="status-bar">
+          <div class="status-item" :title="connectionError">
+            <div class="pulse" :class="{ error: !connected }"></div>
+            <span>{{ connected ? 'Connected' : (configured ? 'Disconnected' : 'Not Configured') }}</span>
+          </div>
+          <div class="status-item">
+            <span>🚨 {{ alarms.length }} Alarms</span>
+          </div>
+          <div class="status-item">
+            <span>📊 {{ investigations.length }} Investigations</span>
+          </div>
+
+          <button class="btn btn-settings" @click="showSettings = true">⚙️ 设置</button>
+        </div>
+      </header>
+      
+      <!-- Config Warning -->
+      <div class="config-warning" v-if="!configured">
+        <h3>⚠️ 需要配置</h3>
+        <p>请先配置 AIOps API URL 和 Agent Runtime ARN 才能使用</p>
+        <button class="btn btn-primary" @click="showSettings = true">⚙️ 打开设置</button>
+      </div>
+      
+      <!-- Settings Modal -->
+      <div class="modal-overlay" v-if="showSettings" @click.self="showSettings = false">
+        <div class="modal">
+          <h2>⚙️ 配置设置</h2>
+          <div class="form-group">
+            <label>AIOps API URL</label>
+            <input type="text" v-model="configForm.aiops_api" placeholder="https://xxx.execute-api.us-west-2.amazonaws.com/prod/aiops">
+            <small>从 CloudFormation Outputs 获取 AIOpsApiUrl</small>
+          </div>
+          <div class="form-group">
+            <label>Agent Runtime ARN</label>
+            <input type="text" v-model="configForm.agent_runtime_arn" placeholder="arn:aws:bedrock-agentcore:us-west-2:xxx:runtime/xxx">
+            <small>从 CloudFormation Outputs 获取 AgentRuntimeArn</small>
+          </div>
+          <div class="modal-buttons">
+            <button class="btn btn-cancel" @click="showSettings = false">取消</button>
+            <button class="btn btn-primary" @click="saveConfig">保存配置</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="tabs">
+        <div class="tab" :class="{ active: tab === 'alarms' }" @click="tab = 'alarms'">
+          🚨 Active Alarms
+        </div>
+        <div class="tab" :class="{ active: tab === 'investigations' }" @click="tab = 'investigations'">
+          📊 Investigations
+        </div>
+      </div>
+      
+      <!-- Alarms Tab -->
+      <div v-if="tab === 'alarms'">
+        <div v-if="loading" class="loading">
+          <div class="spinner"></div>
+          <span>Loading alarms from us-east-1...</span>
+        </div>
+        <div v-else-if="alarms.length === 0" class="empty-state">
+          <div class="empty-icon">✅</div>
+          <h3>All Systems Healthy</h3>
+          <p>No active alarms detected</p>
+        </div>
+        <div v-else>
+          <div class="card" v-for="alarm in alarms" :key="alarm.name">
+            <div class="alarm-header">
+              <div class="alarm-title">
+                <div class="alarm-icon">🔴</div>
+                <div>
+                  <div class="alarm-name">{{ alarm.name }}</div>
+                  <div class="alarm-namespace">{{ alarm.namespace }}</div>
+                </div>
+              </div>
+              <button 
+                class="btn btn-primary" 
+                :class="{ 'btn-hidden': isInvestigated(alarm.name) }"
+                @click="investigate(alarm)"
+                :disabled="investigating === alarm.name"
+              >
+                {{ investigating === alarm.name ? '⏳ Starting...' : '🔍 Investigate' }}
+              </button>
+            </div>
+            <div class="alarm-meta">
+              <div class="meta-item">
+                <label>Metric</label>
+                <span>{{ alarm.metric_name }}</span>
+              </div>
+              <div class="meta-item">
+                <label>Threshold</label>
+                <span>{{ alarm.comparison_operator }} {{ alarm.threshold }}</span>
+              </div>
+              <div class="meta-item">
+                <label>Dimensions</label>
+                <span>{{ formatDimensions(alarm.dimensions) }}</span>
+              </div>
+            </div>
+            <div style="font-size: 13px; color: #71717a;">
+              {{ alarm.state_reason?.substring(0, 150) }}...
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Investigations Tab -->
+      <div v-if="tab === 'investigations'">
+        <div v-if="loading" class="loading">
+          <div class="spinner"></div>
+          <span>Loading investigations...</span>
+        </div>
+        <div v-else-if="investigations.length === 0" class="empty-state">
+          <div class="empty-icon">📋</div>
+          <h3>No Investigations</h3>
+          <p>Start one from the Alarms tab</p>
+        </div>
+        <div v-else>
+          <div class="card" v-for="inv in investigationDetails" :key="inv.investigation_id">
+            <div class="alarm-header" @click="inv.collapsed = !inv.collapsed" style="cursor: pointer;">
+              <div class="alarm-title">
+                <div class="alarm-icon" style="background: rgba(34, 197, 94, 0.2);">📊</div>
+                <div>
+                  <div class="alarm-name">{{ inv.alarm_name }}</div>
+                  <div class="alarm-namespace">ID: {{ inv.investigation_id?.substring(0, 8) }}...</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="inv-status" :class="inv.status?.toLowerCase()">
+                  {{ getStatusIcon(inv.status) }}
+                  {{ inv.status }}
+                </div>
+                <span class="task-expand" :class="{ open: !inv.collapsed }">▼</span>
+              </div>
+            </div>
+            
+            <div v-if="!inv.collapsed">
+            <!-- Planning indicator -->
+            <div class="planning-indicator" v-if="inv.status === 'PLANNING'">
+              <div class="spinner"></div>
+              <span>🧠 Brain Agent 正在分析告警并生成调查任务...</span>
+            </div>
+            
+            <div class="inv-metrics">
+              <div class="metric-card">
+                <div class="metric-value">{{ Math.round(inv.confidence) }}%</div>
+                <div class="metric-label">Confidence</div>
+                <div class="confidence-bar">
+                  <div class="confidence-fill" :style="{ width: inv.confidence + '%' }"></div>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-value">{{ inv.completed_tasks }}/{{ inv.total_tasks }}</div>
+                <div class="metric-label">Tasks</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-value">{{ inv.metric }}</div>
+                <div class="metric-label">Metric</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-value">{{ inv.elapsed_time }}</div>
+                <div class="metric-label">耗时</div>
+              </div>
+            </div>
+            
+            <div class="hypothesis" v-if="inv.hypothesis">
+              <div class="hypothesis-label">💡 Current Hypothesis</div>
+              <div>{{ inv.hypothesis }}</div>
+            </div>
+            
+            <div class="section-header" @click="inv.showTasks = !inv.showTasks" v-if="inv.total_tasks > 0">
+              <h4>📋 Tasks Progress ({{ inv.completed_tasks }}/{{ inv.total_tasks }})</h4>
+              <span class="task-expand" :class="{ open: inv.showTasks }">▼</span>
+            </div>
+            <div class="task-list" v-if="inv.showTasks && inv.total_tasks > 0">
+              <div 
+                class="task-item" 
+                :class="task.status?.toLowerCase()"
+                v-for="(task, i) in inv.tasks" 
+                :key="task.task_id"
+              >
+                <div class="task-header" @click="task.expanded = !task.expanded">
+                  <div class="task-icon" :class="task.status?.toLowerCase()">
+                    {{ getTaskIcon(task.status) }}
+                  </div>
+                  <div class="task-content">
+                    <div class="task-agent">
+                      Task {{ i + 1 }}: {{ task.agent_type }}
+                      <span v-if="task.status === 'IN_PROGRESS'" style="color: #fbbf24; font-size: 12px; margin-left: 8px;">⚡ 执行中...</span>
+                      <span class="task-expand" :class="{ open: task.expanded }" v-if="task.finding">▼</span>
+                    </div>
+                    <div class="task-desc">{{ task.description }}</div>
+                  </div>
+                </div>
+                
+                <div class="task-findings" v-if="task.expanded && task.finding">
+                  <div class="finding-section" v-if="task.finding.summary">
+                    <div class="finding-label">Summary</div>
+                    <div class="finding-content">{{ task.finding.summary }}</div>
+                  </div>
+                  <div class="finding-section" v-if="task.finding.key_findings?.length">
+                    <div class="finding-label">Key Findings</div>
+                    <ul class="finding-list">
+                      <li v-for="(f, idx) in task.finding.key_findings" :key="idx">{{ f }}</li>
+                    </ul>
+                  </div>
+                  <div class="finding-section" v-if="task.finding.recommendations?.length">
+                    <div class="finding-label">Recommendations</div>
+                    <ul class="finding-list">
+                      <li v-for="(r, idx) in task.finding.recommendations" :key="idx">{{ r }}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="root-cause" v-if="inv.final_result?.root_cause">
+              <div class="root-cause-label">🎯 Root Cause Identified</div>
+              <div>{{ inv.final_result.root_cause }}</div>
+            </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted, onUnmounted } = Vue
+    
+    createApp({
+      setup() {
+        const tab = ref('alarms')
+        const alarms = ref([])
+        const investigations = ref([])
+        const investigationDetails = ref([])
+        const investigatedAlarms = ref([])
+        const loading = ref(true)
+        const investigating = ref(null)
+        const showSettings = ref(false)
+        const configured = ref(false)
+        const connected = ref(false)
+        const connectionError = ref('')
+        const configForm = ref({ aiops_api: '', agent_runtime_arn: '' })
+        let interval = null
+        
+        const isInvestigated = (alarmName) => {
+          return investigatedAlarms.value.includes(alarmName)
+        }
+        
+        const getStatusIcon = (status) => {
+          switch(status) {
+            case 'COMPLETED': return '✅'
+            case 'IN_PROGRESS': return '⚡'
+            case 'PLANNING': return '🧠'
+            default: return '⏳'
+          }
+        }
+        
+        const getTaskIcon = (status) => {
+          switch(status) {
+            case 'COMPLETED': return '✓'
+            case 'IN_PROGRESS': return '⚡'
+            default: return '○'
+          }
+        }
+        
+
+        
+        const formatDimensions = (dims) => {
+          if (!dims || !dims.length) return 'N/A'
+          return dims.map(d => `${d.name}=${d.value}`).join(', ')
+        }
+        
+        // 计算耗时 - 使用 UTC 时间确保一致性
+        const calcElapsedTime = (startTimeStr, isCompleted) => {
+          if (!startTimeStr) return '0s'
+          try {
+            // 确保 startTime 被解析为 UTC
+            let startTime
+            if (startTimeStr.endsWith('Z') || startTimeStr.includes('+')) {
+              startTime = new Date(startTimeStr)
+            } else {
+              // 如果没有时区信息，假设是 UTC
+              startTime = new Date(startTimeStr + 'Z')
+            }
+            
+            // 使用 UTC 时间计算
+            const nowUtc = Date.now()
+            const startUtc = startTime.getTime()
+            const elapsed = Math.floor((nowUtc - startUtc) / 1000)
+            
+            // 防止负数（时钟偏差）
+            if (elapsed < 0) return '0s'
+            
+            if (elapsed < 60) {
+              return `${elapsed}s`
+            } else if (elapsed < 3600) {
+              const mins = Math.floor(elapsed / 60)
+              const secs = elapsed % 60
+              return `${mins}m ${secs}s`
+            } else {
+              const hours = Math.floor(elapsed / 3600)
+              const mins = Math.floor((elapsed % 3600) / 60)
+              return `${hours}h ${mins}m`
+            }
+          } catch {
+            return '0s'
+          }
+        }
+        
+        const loadConfig = async () => {
+          try {
+            const res = await fetch('/api/config')
+            const data = await res.json()
+            configForm.value.aiops_api = data.aiops_api || ''
+            configForm.value.agent_runtime_arn = data.agent_runtime_arn || ''
+            configured.value = data.configured
+            if (!data.configured) showSettings.value = true
+          } catch (e) { console.error('Failed to load config:', e) }
+        }
+        
+        const checkConnection = async () => {
+          if (!configured.value) {
+            connected.value = false
+            connectionError.value = 'Not configured'
+            return
+          }
+          try {
+            const res = await fetch('/api/health')
+            const data = await res.json()
+            connected.value = data.connected
+            connectionError.value = data.error || ''
+          } catch (e) {
+            connected.value = false
+            connectionError.value = 'Health check failed'
+          }
+        }
+        
+        const saveConfig = async () => {
+          try {
+            const res = await fetch('/api/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(configForm.value)
+            })
+            if (res.ok) {
+              configured.value = true
+              showSettings.value = false
+              await checkConnection()
+              await fetchData()
+            }
+          } catch (e) { console.error('Failed to save config:', e) }
+        }
+        
+        const fetchData = async () => {
+          if (!configured.value) { loading.value = false; return }
+          try {
+            const [alarmsRes, invsRes, investigatedRes] = await Promise.all([
+              fetch('/api/alarms').then(r => r.json()),
+              fetch('/api/investigations').then(r => r.json()),
+              fetch('/api/investigated-alarms').then(r => r.json())
+            ])
+            alarms.value = alarmsRes
+            investigations.value = invsRes
+            investigatedAlarms.value = investigatedRes
+            
+            // 获取每个调查的详情
+            const details = await Promise.all(
+              invsRes.map(async (inv) => {
+                const detail = await fetch(`/api/investigation/${inv.investigation_id}`).then(r => r.json())
+                const ctx = detail?.context || {}
+                const findings = ctx.findings || {}
+                
+                // 将 findings 映射到 tasks
+                const tasks = (detail?.tasks || []).map(t => {
+                  const findingKey = `${t.task_id}_${t.agent_type}`
+                  return {
+                    ...t,
+                    expanded: false,
+                    finding: findings[findingKey]
+                  }
+                })
+                
+                const existing = investigationDetails.value.find(d => d.investigation_id === inv.investigation_id)
+                if (existing) {
+                  tasks.forEach(t => {
+                    const prev = existing.tasks?.find(pt => pt.task_id === t.task_id)
+                    if (prev) t.expanded = prev.expanded
+                  })
+                }
+                
+                // 优先从 alarm_text 解析 alarm 名称
+                let alarmName = null
+                const alarmText = inv.alarm_text || ''
+                const match = alarmText.match(/CloudWatch Alarm:\s*([^\n]+)/)
+                if (match) {
+                  alarmName = match[1].trim()
+                }
+                
+                // 如果解析失败，使用 alarm_summary 中的 resource_name
+                if (!alarmName || alarmName === 'unknown') {
+                  alarmName = inv.alarm_summary?.resource_name
+                }
+                
+                const displayName = alarmName || `Investigation ${inv.investigation_id?.substring(0, 8)}`
+                
+                const status = ctx.status || inv.status || 'PLANNING'
+                const isCompleted = status === 'COMPLETED'
+                
+                // 如果已完成，使用锁定的 confidence 和耗时
+                let confidence = ctx.confidence || 0
+                let elapsedTime = calcElapsedTime(inv.created_at, isCompleted)
+                
+                // 如果已完成，锁定耗时（从 existing 获取或计算最终值）
+                if (isCompleted && existing?.final_elapsed_time) {
+                  elapsedTime = existing.final_elapsed_time
+                }
+                // 如果已完成，锁定 confidence
+                if (isCompleted && existing?.final_confidence !== undefined) {
+                  confidence = existing.final_confidence
+                }
+                
+                const result = {
+                  investigation_id: inv.investigation_id,
+                  alarm_name: displayName,
+                  status: status,
+                  confidence: confidence,
+                  hypothesis: ctx.current_hypothesis,
+                  metric: inv.alarm_summary?.metric || 'N/A',
+                  elapsed_time: elapsedTime,
+                  created_at: inv.created_at,
+                  tasks: tasks.sort((a, b) => {
+                    // 按 task-N 格式的数字排序
+                    const numA = parseInt((a.task_id || '').replace('task-', '')) || 0
+                    const numB = parseInt((b.task_id || '').replace('task-', '')) || 0
+                    return numA - numB
+                  }),
+                  completed_tasks: tasks.filter(t => t.status === 'COMPLETED').length,
+                  total_tasks: tasks.length,
+                  final_result: ctx.final_result,
+                  showTasks: existing?.showTasks ?? true,
+                  collapsed: existing?.collapsed ?? false
+                }
+                
+                // 如果刚完成，锁定最终值
+                if (isCompleted && !existing?.final_elapsed_time) {
+                  result.final_elapsed_time = elapsedTime
+                  result.final_confidence = confidence
+                } else if (existing?.final_elapsed_time) {
+                  result.final_elapsed_time = existing.final_elapsed_time
+                  result.final_confidence = existing.final_confidence
+                }
+                
+                return result
+              })
+            )
+            investigationDetails.value = details
+          } catch (e) {
+            console.error('Fetch error:', e)
+          } finally {
+            loading.value = false
+          }
+        }
+        
+        const investigate = async (alarm) => {
+          investigating.value = alarm.name
+          // 立即添加到已调查列表，隐藏按钮
+          investigatedAlarms.value.push(alarm.name)
+          
+          try {
+            const res = await fetch('/api/investigate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...alarm,
+                dimensions_str: formatDimensions(alarm.dimensions)
+              })
+            })
+            const data = await res.json()
+            if (data.success) {
+              tab.value = 'investigations'
+              await fetchData()
+            }
+          } finally {
+            investigating.value = null
+          }
+        }
+        
+        onMounted(async () => {
+          await loadConfig()
+          await checkConnection()
+          await fetchData()
+          interval = setInterval(async () => {
+            await checkConnection()
+            await fetchData()
+          }, 3000)  // 每3秒刷新
+        })
+        
+        onUnmounted(() => {
+          if (interval) clearInterval(interval)
+        })
+        
+        return {
+          tab, alarms, investigations, investigationDetails, loading, investigating,
+          showSettings, configured, connected, connectionError, configForm,
+          formatDimensions, investigate, isInvestigated, getStatusIcon, getTaskIcon, saveConfig, checkConnection
+        }
+      }
+    }).mount('#app')
+  </script>
+</body>
+</html>

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIOps Demo - 错误注入</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23dc2626'/><text x='50' y='68' font-size='50' font-weight='bold' font-family='Arial' text-anchor='middle' fill='white'>IN</text></svg>">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        h1 { text-align: center; color: #fff; margin-bottom: 10px; font-size: 26px; }
+        .subtitle { text-align: center; color: #aaa; margin-bottom: 25px; font-size: 14px; }
+        
+        .config-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+        .config-section h3 { font-size: 14px; color: #333; margin-bottom: 12px; }
+        .config-row { margin-bottom: 10px; }
+        .config-row label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+        .config-row input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .config-row input:focus { outline: none; border-color: #007bff; }
+        .config-status { font-size: 12px; }
+        .config-status.ok { color: #28a745; }
+        .config-status.error { color: #dc3545; }
+        
+        .scenarios-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .scenario-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .scenario-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        }
+        .scenario-card.injected {
+            border: 2px solid #dc3545;
+            background: #fff5f5;
+        }
+        
+        .scenario-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .scenario-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 4px;
+        }
+        .scenario-desc {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .scenario-alarm {
+            font-size: 11px;
+            color: #007bff;
+        }
+        .scenario-alarm::before { content: '🔔 触发告警: '; }
+        
+        .scenario-status {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .scenario-status.normal { background: #d4edda; color: #155724; }
+        .scenario-status.injected { background: #f8d7da; color: #721c24; }
+        
+        .scenario-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        
+        .btn {
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; }
+        .btn-danger:hover:not(:disabled) { box-shadow: 0 3px 10px rgba(220, 53, 69, 0.4); }
+        .btn-success { background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white; }
+        .btn-success:hover:not(:disabled) { box-shadow: 0 3px 10px rgba(40, 167, 69, 0.4); }
+        .btn-primary { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; }
+        .btn-sm { padding: 6px 12px; font-size: 11px; }
+        .btn-outline { background: transparent; border: 1px solid #ddd; color: #666; }
+        
+        .request-indicator {
+            font-size: 10px;
+            display: none;
+            margin-left: 8px;
+        }
+        .request-indicator.active { display: inline; color: #dc3545; }
+        .request-indicator.recovery { display: inline; color: #28a745; }
+        
+        .footer-actions {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+        }
+        .footer-actions p {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .config-warning {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .config-warning h3 { color: #92400e; margin-bottom: 8px; font-size: 16px; font-weight: 600; }
+        .config-warning p { color: #78350f; font-size: 14px; }
+        
+        .config-section h3 { display: flex; align-items: center; gap: 10px; }
+        .config-section.collapsed {
+            padding: 10px 16px;
+        }
+        .config-section.collapsed .config-row { display: none; }
+        .config-section.collapsed .config-actions { display: none; }
+        .config-section.collapsed h3 { margin-bottom: 0; }
+        
+        .connection-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 8px;
+        }
+        .connection-dot.connected {
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .connection-dot.disconnected {
+            background: #ef4444;
+        }
+        .connection-dot.checking {
+            background: #f59e0b;
+            animation: pulse 0.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px currentColor; }
+            50% { opacity: 0.5; box-shadow: 0 0 4px currentColor; }
+        }
+        
+        .config-toggle {
+            font-size: 11px;
+            color: #666;
+            cursor: pointer;
+            margin-left: auto;
+        }
+        .config-toggle:hover { color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 AIOps 错误注入演示</h1>
+        <p class="subtitle">选择场景注入错误，触发对应的 CloudWatch 告警</p>
+
+        <div id="config-warning" class="config-warning" style="display: none;">
+            <h3 id="warning-title">⚠️ 需要配置</h3>
+            <p id="warning-text">请先配置 Error Injection API 和 Sample API 才能使用</p>
+        </div>
+
+        <div id="config-section" class="config-section">
+            <h3>⚙️ API 配置 <span id="connection-dot" class="connection-dot" style="display: none;"></span><span id="config-toggle" class="config-toggle" style="display: none;">展开配置</span></h3>
+            <div class="config-row">
+                <label>Error Injection API</label>
+                <input type="text" id="error-injection-api" placeholder="https://xxx.execute-api.region.amazonaws.com/prod/error-injection">
+            </div>
+            <div class="config-row">
+                <label>Sample API</label>
+                <input type="text" id="sample-api" placeholder="https://xxx.execute-api.region.amazonaws.com/prod">
+            </div>
+            <div class="config-actions" style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                <button id="save-config-btn" class="btn btn-primary btn-sm">💾 保存配置</button>
+                <span id="config-status" class="config-status"></span>
+            </div>
+        </div>
+
+        <div id="scenarios-container" class="scenarios-list">
+            <!-- Scenarios will be rendered here -->
+        </div>
+
+        <div class="footer-actions">
+            <p>💡 每次只注入一个场景，便于演示和观察对应的告警</p>
+            <button id="recover-all-btn" class="btn btn-outline">🔄 恢复所有场景</button>
+        </div>
+    </div>
+
+    <script>
+        const scenariosContainer = document.getElementById('scenarios-container');
+        const errorInjectionApiInput = document.getElementById('error-injection-api');
+        const sampleApiInput = document.getElementById('sample-api');
+        const saveConfigBtn = document.getElementById('save-config-btn');
+        const configStatus = document.getElementById('config-status');
+        const recoverAllBtn = document.getElementById('recover-all-btn');
+
+        let scenarios = {};
+        let statuses = {};
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function renderScenarios() {
+            scenariosContainer.innerHTML = '';
+            
+            const scenarioOrder = ['s3_access', 'latency', 'wrong_ids', 'lambda_throttle', 'dynamodb_throttle'];
+            
+            scenarioOrder.forEach(key => {
+                const scenario = scenarios[key];
+                if (!scenario) return;
+                
+                const status = statuses[key] || 'normal';
+                const isInjected = status === 'injected';
+                
+                const card = document.createElement('div');
+                card.className = `scenario-card ${isInjected ? 'injected' : ''}`;
+                card.innerHTML = `
+                    <div class="scenario-info">
+                        <div class="scenario-title">${scenario.name}<span class="request-indicator" id="req-${key}">请求中...</span></div>
+                        <div class="scenario-desc">${scenario.description}</div>
+                        <div class="scenario-alarm">${scenario.alarm}</div>
+                    </div>
+                    <div class="scenario-status ${status}">${isInjected ? '❌ 已注入' : '✅ 正常'}</div>
+                    <div class="scenario-actions">
+                        <button class="btn btn-danger" onclick="injectError('${key}')" ${isInjected ? 'disabled' : ''}>🚨 注入</button>
+                        <button class="btn btn-success" onclick="recoverError('${key}')" ${!isInjected ? 'disabled' : ''}>✅ 恢复</button>
+                    </div>
+                `;
+                scenariosContainer.appendChild(card);
+            });
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                errorInjectionApiInput.value = data.error_injection_api || '';
+                sampleApiInput.value = data.sample_api || '';
+                
+                if (data.configured) {
+                    await checkConnection();
+                } else {
+                    updateConnectionState('unconfigured');
+                }
+            } catch (error) {
+                configStatus.textContent = '加载失败';
+                configStatus.className = 'config-status error';
+                updateConnectionState('unconfigured');
+            }
+        }
+
+        async function loadScenarios() {
+            try {
+                const response = await fetch('/api/scenarios');
+                scenarios = await response.json();
+                renderScenarios();
+            } catch (error) {
+                console.error('Failed to load scenarios:', error);
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                if (response.ok && data.statuses) {
+                    statuses = data.statuses;
+                    renderScenarios();
+                    
+                    // Update request indicators
+                    Object.keys(data.active_requests || {}).forEach(key => {
+                        const indicator = document.getElementById(`req-${key}`);
+                        if (indicator) {
+                            const isActive = data.active_requests[key];
+                            const isRecovery = data.recovery_requests && data.recovery_requests[key];
+                            if (isRecovery) {
+                                indicator.className = 'request-indicator recovery';
+                                indicator.textContent = '🟢 恢复请求中...';
+                            } else if (isActive) {
+                                indicator.className = 'request-indicator active';
+                                indicator.textContent = '🔴 请求中...';
+                            } else {
+                                indicator.className = 'request-indicator';
+                                indicator.textContent = '';
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to fetch status:', error);
+            }
+        }
+
+        const configSection = document.getElementById('config-section');
+        const connectionDot = document.getElementById('connection-dot');
+        const configToggle = document.getElementById('config-toggle');
+        const configWarning = document.getElementById('config-warning');
+        const warningTitle = document.getElementById('warning-title');
+        const warningText = document.getElementById('warning-text');
+        
+        let isConnected = false;
+
+        async function checkConnection() {
+            const errorApi = errorInjectionApiInput.value;
+            const sampleApi = sampleApiInput.value;
+            
+            if (!errorApi || !sampleApi) {
+                updateConnectionState('unconfigured');
+                return false;
+            }
+            
+            connectionDot.className = 'connection-dot checking';
+            connectionDot.style.display = 'inline-block';
+            configStatus.textContent = '检查连接中...';
+            
+            try {
+                const response = await fetch('/api/check-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ error_injection_api: errorApi, sample_api: sampleApi })
+                });
+                const data = await response.json();
+                
+                if (data.connected) {
+                    updateConnectionState('connected');
+                    return true;
+                } else {
+                    updateConnectionState('error', data.error || 'API 连接失败');
+                    return false;
+                }
+            } catch (error) {
+                updateConnectionState('error', '网络错误');
+                return false;
+            }
+        }
+        
+        function updateConnectionState(state, errorMsg = '') {
+            if (state === 'connected') {
+                isConnected = true;
+                connectionDot.className = 'connection-dot connected';
+                connectionDot.style.display = 'inline-block';
+                configToggle.style.display = 'inline';
+                configSection.classList.add('collapsed');
+                configWarning.style.display = 'none';
+                configStatus.textContent = '✓ 已连接';
+                configStatus.className = 'config-status ok';
+            } else if (state === 'error') {
+                isConnected = false;
+                connectionDot.className = 'connection-dot disconnected';
+                connectionDot.style.display = 'inline-block';
+                configToggle.style.display = 'none';
+                configSection.classList.remove('collapsed');
+                configWarning.style.display = 'block';
+                warningTitle.textContent = '❌ 连接失败';
+                warningText.textContent = errorMsg || '请检查 API 地址是否正确';
+                configStatus.textContent = '连接失败';
+                configStatus.className = 'config-status error';
+            } else {
+                isConnected = false;
+                connectionDot.style.display = 'none';
+                configToggle.style.display = 'none';
+                configSection.classList.remove('collapsed');
+                configWarning.style.display = 'block';
+                warningTitle.textContent = '⚠️ 需要配置';
+                warningText.textContent = '请先配置 Error Injection API 和 Sample API 才能使用';
+                configStatus.textContent = '⚠ 未配置';
+                configStatus.className = 'config-status error';
+            }
+        }
+        
+        configToggle.addEventListener('click', () => {
+            configSection.classList.toggle('collapsed');
+            configToggle.textContent = configSection.classList.contains('collapsed') ? '展开配置' : '收起配置';
+        });
+
+        saveConfigBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        error_injection_api: errorInjectionApiInput.value,
+                        sample_api: sampleApiInput.value
+                    })
+                });
+                if (response.ok) {
+                    showToast('配置已保存，正在检查连接...');
+                    await checkConnection();
+                    fetchStatus();
+                }
+            } catch (error) {
+                configStatus.textContent = '保存失败';
+                configStatus.className = 'config-status error';
+                showToast('保存失败', 'error');
+            }
+        });
+
+        async function injectError(scenarioType) {
+            try {
+                const response = await fetch(`/api/inject/${scenarioType}`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(`${scenarios[scenarioType]?.name || scenarioType} 注入成功`);
+                    await fetchStatus();
+                } else {
+                    showToast(`注入失败: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function recoverError(scenarioType) {
+            try {
+                const response = await fetch(`/api/recover/${scenarioType}`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(`${scenarios[scenarioType]?.name || scenarioType} 已恢复`);
+                    await fetchStatus();
+                } else {
+                    showToast(`恢复失败: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        recoverAllBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/recover-all', { method: 'POST' });
+                if (response.ok) {
+                    showToast('所有场景已恢复');
+                    await fetchStatus();
+                }
+            } catch (error) {
+                showToast('恢复失败', 'error');
+            }
+        });
+
+        // Initialize
+        loadConfig();
+        loadScenarios();
+        fetchStatus();
+        setInterval(fetchStatus, 5000);
+    </script>
+</body>
+</html>

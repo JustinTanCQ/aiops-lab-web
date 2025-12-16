@@ -1,0 +1,4 @@
+{
+  "aiops_api": "https://pl7o57jacj.execute-api.us-east-1.amazonaws.com/prod/aiops",
+  "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-east-1:072061963333:runtime/aiops_runtime-p4FKMFHjMs"
+}
