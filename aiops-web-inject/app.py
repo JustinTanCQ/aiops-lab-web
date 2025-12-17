@@ -61,19 +61,29 @@ def save_config(config):
 request_threads = {}
 stop_events = {}
 recovery_mode = {}  # Track if scenario is in recovery mode (sending normal requests)
+operation_locks = {}  # Prevent concurrent operations on same scenario
+last_operation_time = {}  # Track last operation time for debouncing
 
 def send_single_request(config, request_type):
     """Send a single request based on request type"""
     try:
+        sample_api = config.get('sample_api', '')
+        if not sample_api:
+            print(f"[REQUEST] ERROR: sample_api not configured!")
+            return
+            
         if request_type == 'get_items':
-            requests.get(f"{config['sample_api']}/items", timeout=5)
+            resp = requests.get(f"{sample_api}/items", timeout=5)
+            print(f"[REQUEST] GET /items -> {resp.status_code}")
         elif request_type == 'get_by_id':
-            requests.get(f"{config['sample_api']}/items/test-id-1", timeout=5)
+            resp = requests.get(f"{sample_api}/items/test-id-1", timeout=5)
+            print(f"[REQUEST] GET /items/test-id-1 -> {resp.status_code}")
         else:  # post_items
             test_data = {"name": "Error Trigger", "content": f"Request at {time.time()}"}
-            requests.post(f"{config['sample_api']}/items", json=test_data, timeout=5)
+            resp = requests.post(f"{sample_api}/items", json=test_data, timeout=5)
+            print(f"[REQUEST] POST /items -> {resp.status_code}")
     except Exception as e:
-        print(f"Request failed: {e}")
+        print(f"[REQUEST] FAILED: {request_type} - {e}")
 
 def send_continuous_requests(scenario_type, max_requests=None):
     """Send continuous requests based on scenario type
@@ -247,8 +257,23 @@ def inject_error(scenario_type):
     if scenario_type not in SCENARIOS:
         return jsonify({"error": f"Unknown scenario: {scenario_type}"}), 400
     
+    # Debounce: prevent rapid repeated clicks (3 second cooldown)
+    current_time = time.time()
+    last_time = last_operation_time.get(scenario_type, 0)
+    if current_time - last_time < 3:
+        return jsonify({"error": "请等待3秒后再操作", "cooldown": True}), 429
+    
+    # Check if operation is already in progress
+    if scenario_type in operation_locks and operation_locks[scenario_type]:
+        return jsonify({"error": "操作进行中，请稍候", "in_progress": True}), 429
+    
     try:
+        operation_locks[scenario_type] = True
+        last_operation_time[scenario_type] = current_time
+        
         config = load_config()
+        print(f"[INJECT] Starting injection for {scenario_type}, sample_api: {config.get('sample_api', 'NOT SET')}")
+        
         response = requests.post(
             config['error_injection_api'], 
             json={"action": "inject", "error_type": scenario_type}, 
@@ -259,22 +284,42 @@ def inject_error(scenario_type):
             start_requests(scenario_type, is_recovery=False)
             result = response.json()
             result['message'] = f"{SCENARIOS[scenario_type]['name']} injected, continuous requests started"
+            print(f"[INJECT] Success: {scenario_type}, requests started")
             return jsonify(result)
         else:
+            print(f"[INJECT] Failed: {scenario_type}, status: {response.status_code}")
             return jsonify({"error": "Failed to inject error", "details": response.text}), 500
     except Exception as e:
+        print(f"[INJECT] Error: {scenario_type}, {str(e)}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        operation_locks[scenario_type] = False
 
 @app.route('/api/recover/<scenario_type>', methods=['POST'])
 def recover_error(scenario_type):
     if scenario_type not in SCENARIOS:
         return jsonify({"error": f"Unknown scenario: {scenario_type}"}), 400
     
+    # Debounce: prevent rapid repeated clicks (3 second cooldown)
+    current_time = time.time()
+    last_time = last_operation_time.get(scenario_type, 0)
+    if current_time - last_time < 3:
+        return jsonify({"error": "请等待3秒后再操作", "cooldown": True}), 429
+    
+    # Check if operation is already in progress
+    if scenario_type in operation_locks and operation_locks[scenario_type]:
+        return jsonify({"error": "操作进行中，请稍候", "in_progress": True}), 429
+    
     try:
+        operation_locks[scenario_type] = True
+        last_operation_time[scenario_type] = current_time
+        
         # Stop error injection requests first
         stop_requests(scenario_type)
         
         config = load_config()
+        print(f"[RECOVER] Starting recovery for {scenario_type}")
+        
         response = requests.post(
             config['error_injection_api'], 
             json={"action": "recover", "error_type": scenario_type}, 
@@ -287,11 +332,16 @@ def recover_error(scenario_type):
             
             result = response.json()
             result['message'] = f"{SCENARIOS[scenario_type]['name']} recovered, sending 30 normal requests to restore alarm"
+            print(f"[RECOVER] Success: {scenario_type}, sending recovery requests")
             return jsonify(result)
         else:
+            print(f"[RECOVER] Failed: {scenario_type}, status: {response.status_code}")
             return jsonify({"error": "Failed to recover error", "details": response.text}), 500
     except Exception as e:
+        print(f"[RECOVER] Error: {scenario_type}, {str(e)}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        operation_locks[scenario_type] = False
 
 @app.route('/api/recover-all', methods=['POST'])
 def recover_all():

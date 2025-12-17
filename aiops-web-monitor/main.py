@@ -147,7 +147,13 @@ async def start_investigation(alarm: dict):
     if not agent_runtime_arn:
         return {"success": False, "error": "Agent Runtime ARN not configured"}
     
-    prompt = f"""CloudWatch Alarm: {alarm.get('name')}
+    # 使用 alarm name + 时间戳作为显示名称
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    alarm_name = alarm.get('name', 'Unknown')
+    display_name = f"{alarm_name} ({timestamp})"
+    
+    prompt = f"""CloudWatch Alarm: {display_name}
 Namespace: {alarm.get('namespace')}
 Metric: {alarm.get('metric_name')}
 Dimensions: {alarm.get('dimensions_str', '')}
