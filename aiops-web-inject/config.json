@@ -1,4 +1,0 @@
-{
-  "error_injection_api": "https://o5xncc5vqd.execute-api.us-east-1.amazonaws.com/prod/error-injection",
-  "sample_api": "https://fmotstaub9.execute-api.us-east-1.amazonaws.com/prod"
-}
